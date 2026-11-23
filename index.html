@@ -80,6 +80,23 @@
   .nb{width:34px;height:34px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;font-size:16px;color:var(--ink)}
   .nb:hover{border-color:var(--ink)}
   .count{font:13px var(--mono);min-width:52px;text-align:center}
+  .fsb{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;border-radius:8px;border:1px solid var(--line);background:#fff;cursor:pointer;font:600 13px var(--sans);color:var(--ink)}
+  .fsb:hover{border-color:var(--ink)}
+  .fsb svg{width:15px;height:15px}
+
+  /* modo pantalla completa: panel lateral + wireframe ocupan toda la pantalla */
+  .proto.is-fs{position:fixed;inset:0;z-index:100;margin:0;height:100vh;padding:18px 26px;background:var(--paper);grid-template-columns:300px 1fr;gap:26px;overflow:hidden}
+  .proto.is-fs .side{position:static;display:block;max-height:none;height:100%}
+  .proto.is-fs .pick{display:none}
+  .proto.is-fs .stage{height:100%;overflow:auto;padding-right:6px}
+  .proto.is-fs .screen{width:min(100%, calc((100vh - 136px) * 1280 / 820));margin:0 auto}
+  .proto.is-fs .bar,.proto.is-fs .hint,.proto.is-fs .info{width:min(100%, calc((100vh - 136px) * 1280 / 820));margin-left:auto;margin-right:auto}
+  .proto.is-fs .hint{margin-top:8px}
+  .proto.is-fs .info{margin-top:18px;padding-bottom:12px}
+  .proto.is-fs .fsb .on-in{display:none}
+  .proto:not(.is-fs) .fsb .on-out{display:none}
+  .proto.is-fs::backdrop{background:var(--paper)}
+  body.fs-lock{overflow:hidden}
 
   .screen{position:relative;background:#fff;border:1px solid var(--line);border-radius:8px;box-shadow:0 1px 0 rgba(0,0,0,.03),0 14px 34px -18px rgba(0,0,0,.25);overflow:hidden}
   .screen img{display:block;width:100%;height:auto;aspect-ratio:1280/820}
@@ -159,10 +176,10 @@
   <section id="prototipo"><div class="wrap">
     <div class="over">Prototipo navegable</div>
     <h2>Recorre las 36 pantallas</h2>
-    <p class="sub">Haz clic en los botones, tarjetas y enlaces del wireframe para avanzar como en el archivo de draw.io, o elige una pantalla en la lista. También puedes usar las flechas ← → del teclado.</p>
+    <p class="sub">Haz clic en los botones, tarjetas y enlaces del wireframe para avanzar como en el archivo de draw.io, o elige una pantalla en la lista. También puedes usar las flechas ← → del teclado y el botón <b>Pantalla completa</b> (o la tecla F) para presentar.</p>
     <div class="proto">
       <aside class="side" id="side"></aside>
-      <div>
+      <div class="stage">
         <select class="pick" id="pick" aria-label="Elegir pantalla"></select>
         <div class="bar">
           <div><div class="crumb" id="crumb"></div><h3 id="ttl"></h3></div>
@@ -171,6 +188,11 @@
             <button class="nb" id="prev" aria-label="Pantalla anterior">←</button>
             <span class="count" id="count"></span>
             <button class="nb" id="next" aria-label="Pantalla siguiente">→</button>
+            <button class="fsb" id="fs" title="Pantalla completa (F)" aria-pressed="false">
+              <svg class="on-in" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4"/></svg>
+              <svg class="on-out" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M6 2v4H2M14 6h-4V2M10 14v-4h4M2 10h4v4"/></svg>
+              <span class="on-in">Pantalla completa</span><span class="on-out">Salir</span>
+            </button>
           </div>
         </div>
         <div class="screen" id="screen"><img id="img" alt=""></div>
@@ -268,13 +290,40 @@ function go(id, scroll, init){
   if(on && side.offsetParent){ const t = on.offsetTop - side.offsetTop; if(t < side.scrollTop || t > side.scrollTop + side.clientHeight - 40) side.scrollTop = t - 80; }
   $("#pick").value = id;
   if(!init) history.replaceState(null,"","#w-"+id);
-  if(scroll){ const r = sc.getBoundingClientRect(); if(r.top<60 || r.top>innerHeight*0.6) $("#prototipo .bar").scrollIntoView({behavior:"smooth"}); }
+  if(scroll && !isFs()){ const r = sc.getBoundingClientRect(); if(r.top<60 || r.top>innerHeight*0.6) $("#prototipo .bar").scrollIntoView({behavior:"smooth"}); }
 }
 const step = d => go(DATA.pages[(cur.i+d+DATA.pages.length)%DATA.pages.length].id);
 $("#prev").onclick = ()=>step(-1); $("#next").onclick = ()=>step(1);
 $("#showhs").onchange = e => $("#screen").classList.toggle("show", e.target.checked);
+// pantalla completa: usa la Fullscreen API sobre el bloque del prototipo; si el navegador no la soporta, se simula con position:fixed
+const proto = $(".proto");
+const isFs = () => proto.classList.contains("is-fs");
+function setFs(on){
+  proto.classList.toggle("is-fs", on);
+  document.body.classList.toggle("fs-lock", on);
+  $("#fs").setAttribute("aria-pressed", on);
+  $("#fs").title = on ? "Salir de pantalla completa (Esc)" : "Pantalla completa (F)";
+  const b = document.querySelector(".grp button.on");
+  if(on && b) b.scrollIntoView({block:"center"});
+  if(!on) $("#prototipo .bar").scrollIntoView();
+}
+function toggleFs(){
+  const native = document.fullscreenElement || document.webkitFullscreenElement;
+  if(native){ (document.exitFullscreen || document.webkitExitFullscreen).call(document); return; }
+  if(isFs()){ setFs(false); return; }
+  const req = proto.requestFullscreen || proto.webkitRequestFullscreen;
+  setFs(true);
+  if(req){ try{ const r = req.call(proto); if(r && r.catch) r.catch(()=>{}); }catch(_){} }
+}
+const onFsChange = () => { if(!(document.fullscreenElement || document.webkitFullscreenElement) && isFs()) setFs(false); };
+document.addEventListener("fullscreenchange", onFsChange);
+document.addEventListener("webkitfullscreenchange", onFsChange);
+$("#fs").onclick = toggleFs;
+
 addEventListener("keydown", e=>{
   if(/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName)) return;
+  if(e.key==="Escape" && isFs() && !(document.fullscreenElement || document.webkitFullscreenElement)){ setFs(false); return; }
+  if((e.key==="f" || e.key==="F") && !e.ctrlKey && !e.metaKey && !e.altKey){ toggleFs(); return; }
   const r = $("#screen").getBoundingClientRect(); if(r.bottom<0 || r.top>innerHeight) return;
   if(e.key==="ArrowRight") step(1); if(e.key==="ArrowLeft") step(-1);
 });
